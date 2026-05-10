@@ -1961,7 +1961,8 @@ class PeriodicWallApp:
             if e.widget is not self._play_canvas:
                 return
             draw_building_scene(self._play_canvas, e.width, e.height)
-            self._play_ui.lift()
+            # Keep row buttons above the full-bleed canvas so clicks register (macOS/Tk stacking).
+            self._play_ui.lift(self._play_canvas)
 
         self._play_canvas.bind("<Configure>", on_play_canvas_configure)
 
@@ -2000,6 +2001,8 @@ class PeriodicWallApp:
                 cursor="hand2",
                 command=lambda v=n: self._start_survival_from_row(v),
             ).pack(side=tk.LEFT, padx=5)
+
+        self._play_canvas.lower(self._play_ui)
 
         return frame
 
@@ -2123,8 +2126,8 @@ class PeriodicWallApp:
         self._title_active = False
         self._show_only(self.play_screen)
         self.root.update_idletasks()
-        if hasattr(self, "_play_ui"):
-            self._play_ui.lift()
+        if hasattr(self, "_play_ui") and hasattr(self, "_play_canvas"):
+            self._play_ui.lift(self._play_canvas)
 
     def run(self) -> None:
         self.root.mainloop()
