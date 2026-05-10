@@ -924,7 +924,16 @@ class PeriodicWallApp:
 
         self._show_only(self.survival_screen)
         self._draw_survival_room()
-        self._survival_canvas.focus_set()
+
+        def _survival_focus() -> None:
+            try:
+                self._survival_canvas.focus_set()
+            except tk.TclError:
+                pass
+
+        self.root.after_idle(_survival_focus)
+        self.root.after(100, _survival_focus)
+
         self._survival_tick()
 
     def _init_lava_level(self, cw: float, ch: float, floor_y: float) -> None:
@@ -1972,6 +1981,17 @@ class PeriodicWallApp:
             side=tk.LEFT, padx=(0, 12)
         )
 
+        tk.Label(
+            self._play_ui,
+            text="Choose a floor: click a number (1–7) below — that starts the run.\n"
+            'The big "Play" button only lives on the title screen; it will not start a level from here.',
+            font=self.sub_font,
+            fg="#c8d0e0",
+            bg=BG,
+            wraplength=720,
+            justify=tk.CENTER,
+        ).pack(pady=(0, 10))
+
         self._rows_hint = tk.Label(
             self._play_ui,
             text="Rows 1–6: 5 HP. Infinite air jumps (W/↑). Mixed fuse → two vertical shocks; same → falling ⅔-screen ball (crush). Row 6: lava + platforms. Row 7: …try it. WASD.",
@@ -1981,7 +2001,7 @@ class PeriodicWallApp:
             wraplength=720,
             justify=tk.CENTER,
         )
-        self._rows_hint.pack(pady=(0, 14))
+        self._rows_hint.pack(pady=(0, 8))
 
         row_fr = tk.Frame(self._play_ui, bg=BG)
         row_fr.pack(pady=(0, 8))
@@ -2042,9 +2062,18 @@ class PeriodicWallApp:
         self._styled_button(hud, "Leave building", self._survival_forfeit).pack(side=tk.RIGHT)
 
         self._survival_canvas = tk.Canvas(
-            frame, highlightthickness=0, bd=0, bg="#12151f"
+            frame, highlightthickness=0, bd=0, bg="#12151f", takefocus=True
         )
         self._survival_canvas.pack(fill=tk.BOTH, expand=True)
+
+        def on_survival_map(_e: tk.Event) -> None:
+            if self._survival_active:
+                try:
+                    self._survival_canvas.focus_set()
+                except tk.TclError:
+                    pass
+
+        self._survival_canvas.bind("<Map>", on_survival_map)
 
         def on_survival_configure(e: tk.Event) -> None:
             if e.widget is not self._survival_canvas:
