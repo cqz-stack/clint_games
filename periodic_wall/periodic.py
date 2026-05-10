@@ -2002,7 +2002,8 @@ class PeriodicWallApp:
                 command=lambda v=n: self._start_survival_from_row(v),
             ).pack(side=tk.LEFT, padx=5)
 
-        self._play_canvas.lower(self._play_ui)
+        # Canvas.lower() is for canvas *tags*, not widget stacking — use lift on the UI frame.
+        self._play_ui.lift(self._play_canvas)
 
         return frame
 
