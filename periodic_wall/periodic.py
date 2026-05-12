@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+import signal
 import time
 import tkinter as tk
 from collections.abc import Callable
@@ -228,6 +229,9 @@ HAZARD_VY_LAYER = 0.42
 HAZARD_RAIN_DENSITY_MULT = 5.0
 HAZARD_SPAWN_EVERY_FLOOR = 0.008
 HAZARD_SPAWN_BURST_MAX = 150
+# Cap hazard list + fusion passes so the Tk main thread never freezes for seconds
+HAZARD_LIST_HARD_CAP = 1100
+FUSION_RESOLVE_MAX_OUTER = 220
 
 # Giant fused ball (same-symbol): diameter = this × min(w,h); spawns at fusion, falls, damages on overlap
 GIANT_BALL_DIAMETER_FRAC = 2.0 / 3.0
@@ -671,7 +675,41 @@ class PeriodicWallApp:
         self.root.bind("<Return>", self._on_enter_key)
         self.root.bind("<KP_Enter>", self._on_enter_key)
 
+        self._install_quit_hooks()
+
         self.show_title_screen()
+
+    def _force_quit(self) -> None:
+        """Always reachable: window close, Escape, or SIGINT scheduled onto the Tk thread."""
+        self._cancel_banner_anim()
+        self._stop_survival()
+        self._stop_nuke()
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _install_quit_hooks(self) -> None:
+        self.root.protocol("WM_DELETE_WINDOW", self._force_quit)
+        self.root.bind("<Escape>", lambda _e: self._force_quit())
+
+        def _sigint(_signum, _frame) -> None:
+            try:
+                self.root.after(0, self._force_quit)
+            except Exception:
+                import os
+
+                os._exit(0)
+
+        try:
+            signal.signal(signal.SIGINT, _sigint)
+        except ValueError:
+            pass
+        if hasattr(signal, "SIGTERM"):
+            try:
+                signal.signal(signal.SIGTERM, _sigint)
+            except (ValueError, OSError):
+                pass
 
     def _cancel_banner_anim(self) -> None:
         if self._banner_after_id is not None:
@@ -940,12 +978,9 @@ class PeriodicWallApp:
             if not self._survival_active:
                 return
             try:
-                self._survival_canvas.focus_force()
+                self._survival_canvas.focus_set()
             except tk.TclError:
-                try:
-                    self._survival_canvas.focus_set()
-                except tk.TclError:
-                    pass
+                pass
 
         self.root.after_idle(_survival_focus)
         self.root.after(50, _survival_focus)
@@ -1169,7 +1204,9 @@ class PeriodicWallApp:
         m = min(float(w), float(h))
         hz_list = self._survival_hazards
         changed = True
-        while changed:
+        outer = 0
+        while changed and outer < FUSION_RESOLVE_MAX_OUTER:
+            outer += 1
             changed = False
             for i in range(len(hz_list)):
                 for j in range(i + 1, len(hz_list)):
@@ -1408,6 +1445,9 @@ class PeriodicWallApp:
         self._survival_hazards = [
             z for z in self._survival_hazards if -220 < z["y"] < h + 80
         ]
+        if len(self._survival_hazards) > HAZARD_LIST_HARD_CAP:
+            self._survival_hazards.sort(key=lambda z: float(z["y"]))
+            self._survival_hazards = self._survival_hazards[-HAZARD_LIST_HARD_CAP:]
 
     def _draw_survival_hazards(self, c: tk.Canvas) -> None:
         for hz in self._survival_hazards:
@@ -1968,7 +2008,7 @@ class PeriodicWallApp:
         btns = tk.Frame(inner, bg=BG)
         btns.pack()
         self._styled_button(btns, "Play", self.show_play_screen, takefocus=False).pack(side=tk.LEFT, padx=10)
-        self._styled_button(btns, "Quit", lambda: handle_quit(self.root), takefocus=False).pack(
+        self._styled_button(btns, "Quit", self._force_quit, takefocus=False).pack(
             side=tk.LEFT, padx=10
         )
 
@@ -2077,7 +2117,7 @@ class PeriodicWallApp:
 
         tk.Label(
             hud,
-            text="WASD move · W/↑ jump (air jumps) · S duck on ground · Mixed fuse → shocks · Same fuse → falling ball · Row 6: lava",
+            text="WASD move · W/↑ jump (air jumps) · S duck on ground · Mixed fuse → shocks · Same fuse → falling ball · Row 6: lava · Esc quits",
             font=self.sub_font,
             bg=BG,
             fg="#8b90a0",
