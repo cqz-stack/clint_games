@@ -724,9 +724,11 @@ class PeriodicWallApp:
 
         step("in", 0)
 
-    def _styled_button(self, parent: tk.Misc, text: str, command) -> tk.Button:
-        return tk.Button(
-            parent,
+    def _styled_button(
+        self, parent: tk.Misc, text: str, command, **kwargs: object
+    ) -> tk.Button:
+        opts: dict = dict(
+            master=parent,
             text=text,
             font=self.btn_font,
             fg=BTN_FG,
@@ -739,6 +741,8 @@ class PeriodicWallApp:
             cursor="hand2",
             command=command,
         )
+        opts.update(kwargs)
+        return tk.Button(**opts)
 
     def _on_enter_key(self, event: tk.Event) -> None:
         if self._title_active:
@@ -933,13 +937,19 @@ class PeriodicWallApp:
         self._draw_survival_room()
 
         def _survival_focus() -> None:
+            if not self._survival_active:
+                return
             try:
-                self._survival_canvas.focus_set()
+                self._survival_canvas.focus_force()
             except tk.TclError:
-                pass
+                try:
+                    self._survival_canvas.focus_set()
+                except tk.TclError:
+                    pass
 
         self.root.after_idle(_survival_focus)
-        self.root.after(100, _survival_focus)
+        self.root.after(50, _survival_focus)
+        self.root.after(200, _survival_focus)
 
         self._survival_tick()
 
@@ -1957,8 +1967,8 @@ class PeriodicWallApp:
 
         btns = tk.Frame(inner, bg=BG)
         btns.pack()
-        self._styled_button(btns, "Play", self.show_play_screen).pack(side=tk.LEFT, padx=10)
-        self._styled_button(btns, "Quit", lambda: handle_quit(self.root)).pack(
+        self._styled_button(btns, "Play", self.show_play_screen, takefocus=False).pack(side=tk.LEFT, padx=10)
+        self._styled_button(btns, "Quit", lambda: handle_quit(self.root), takefocus=False).pack(
             side=tk.LEFT, padx=10
         )
 
@@ -1973,7 +1983,7 @@ class PeriodicWallApp:
 
         top_row = tk.Frame(controls, bg=BG)
         top_row.pack(fill=tk.X)
-        self._styled_button(top_row, "Back to title", self.show_title_screen).pack(
+        self._styled_button(top_row, "Back to title", self.show_title_screen, takefocus=False).pack(
             side=tk.LEFT, padx=(0, 12)
         )
 
@@ -2015,6 +2025,7 @@ class PeriodicWallApp:
                 padx=5,
                 pady=8,
                 cursor="hand2",
+                takefocus=False,
                 command=lambda v=n: self._start_survival_from_row(v),
             ).pack(side=tk.LEFT, padx=6)
 
@@ -2060,7 +2071,7 @@ class PeriodicWallApp:
 
         tk.Frame(hud_top, bg=BG).grid(row=0, column=2, sticky=tk.NSEW)
 
-        self._styled_button(hud_top, "Leave building", self._survival_forfeit).grid(
+        self._styled_button(hud_top, "Leave building", self._survival_forfeit, takefocus=False).grid(
             row=0, column=3, sticky=tk.E
         )
 
