@@ -1,4 +1,0 @@
-#!/bin/sh
-# Always use Apple's Python — Homebrew's python3 often has no tkinter (_tkinter).
-cd "$(dirname "$0")" || exit 1
-exec /usr/bin/python3 periodic.py "$@"

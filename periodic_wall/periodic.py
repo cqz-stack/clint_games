@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import math
 import random
-import signal
 import time
 import tkinter as tk
 from collections.abc import Callable
@@ -229,9 +228,6 @@ HAZARD_VY_LAYER = 0.42
 HAZARD_RAIN_DENSITY_MULT = 5.0
 HAZARD_SPAWN_EVERY_FLOOR = 0.008
 HAZARD_SPAWN_BURST_MAX = 150
-# Cap hazard list + fusion passes so the Tk main thread never freezes for seconds
-HAZARD_LIST_HARD_CAP = 1100
-FUSION_RESOLVE_MAX_OUTER = 220
 
 # Giant fused ball (same-symbol): diameter = this × min(w,h); spawns at fusion, falls, damages on overlap
 GIANT_BALL_DIAMETER_FRAC = 2.0 / 3.0
@@ -675,12 +671,11 @@ class PeriodicWallApp:
         self.root.bind("<Return>", self._on_enter_key)
         self.root.bind("<KP_Enter>", self._on_enter_key)
 
-        self._install_quit_hooks()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close_window)
 
         self.show_title_screen()
 
-    def _force_quit(self) -> None:
-        """Always reachable: window close, Escape, or SIGINT scheduled onto the Tk thread."""
+    def _on_close_window(self) -> None:
         self._cancel_banner_anim()
         self._stop_survival()
         self._stop_nuke()
@@ -688,28 +683,6 @@ class PeriodicWallApp:
             self.root.destroy()
         except tk.TclError:
             pass
-
-    def _install_quit_hooks(self) -> None:
-        self.root.protocol("WM_DELETE_WINDOW", self._force_quit)
-        self.root.bind("<Escape>", lambda _e: self._force_quit())
-
-        def _sigint(_signum, _frame) -> None:
-            try:
-                self.root.after(0, self._force_quit)
-            except Exception:
-                import os
-
-                os._exit(0)
-
-        try:
-            signal.signal(signal.SIGINT, _sigint)
-        except ValueError:
-            pass
-        if hasattr(signal, "SIGTERM"):
-            try:
-                signal.signal(signal.SIGTERM, _sigint)
-            except (ValueError, OSError):
-                pass
 
     def _cancel_banner_anim(self) -> None:
         if self._banner_after_id is not None:
@@ -762,11 +735,9 @@ class PeriodicWallApp:
 
         step("in", 0)
 
-    def _styled_button(
-        self, parent: tk.Misc, text: str, command, **kwargs: object
-    ) -> tk.Button:
-        opts: dict = dict(
-            master=parent,
+    def _styled_button(self, parent: tk.Misc, text: str, command) -> tk.Button:
+        return tk.Button(
+            parent,
             text=text,
             font=self.btn_font,
             fg=BTN_FG,
@@ -779,8 +750,6 @@ class PeriodicWallApp:
             cursor="hand2",
             command=command,
         )
-        opts.update(kwargs)
-        return tk.Button(**opts)
 
     def _on_enter_key(self, event: tk.Event) -> None:
         if self._title_active:
@@ -953,11 +922,9 @@ class PeriodicWallApp:
 
         self._show_only(self.survival_screen)
         self.root.update_idletasks()
-        wpix = self._survival_canvas.winfo_width()
-        hpix = self._survival_canvas.winfo_height()
+        wpix, hpix = self._survival_canvas.winfo_width(), self._survival_canvas.winfo_height()
         if wpix > 2 and hpix > 2:
-            self._survival_cw = wpix
-            self._survival_ch = hpix
+            self._survival_cw, self._survival_ch = wpix, hpix
 
         cw = max(float(self._survival_cw), 400.0)
         ch = max(float(self._survival_ch), 300.0)
@@ -973,19 +940,7 @@ class PeriodicWallApp:
             self._lava_surface_y = None
 
         self._draw_survival_room()
-
-        def _survival_focus() -> None:
-            if not self._survival_active:
-                return
-            try:
-                self._survival_canvas.focus_set()
-            except tk.TclError:
-                pass
-
-        self.root.after_idle(_survival_focus)
-        self.root.after(50, _survival_focus)
-        self.root.after(200, _survival_focus)
-
+        self._survival_canvas.focus_set()
         self._survival_tick()
 
     def _init_lava_level(self, cw: float, ch: float, floor_y: float) -> None:
@@ -1204,9 +1159,7 @@ class PeriodicWallApp:
         m = min(float(w), float(h))
         hz_list = self._survival_hazards
         changed = True
-        outer = 0
-        while changed and outer < FUSION_RESOLVE_MAX_OUTER:
-            outer += 1
+        while changed:
             changed = False
             for i in range(len(hz_list)):
                 for j in range(i + 1, len(hz_list)):
@@ -1445,9 +1398,6 @@ class PeriodicWallApp:
         self._survival_hazards = [
             z for z in self._survival_hazards if -220 < z["y"] < h + 80
         ]
-        if len(self._survival_hazards) > HAZARD_LIST_HARD_CAP:
-            self._survival_hazards.sort(key=lambda z: float(z["y"]))
-            self._survival_hazards = self._survival_hazards[-HAZARD_LIST_HARD_CAP:]
 
     def _draw_survival_hazards(self, c: tk.Canvas) -> None:
         for hz in self._survival_hazards:
@@ -2007,50 +1957,64 @@ class PeriodicWallApp:
 
         btns = tk.Frame(inner, bg=BG)
         btns.pack()
-        self._styled_button(btns, "Play", self.show_play_screen, takefocus=False).pack(side=tk.LEFT, padx=10)
-        self._styled_button(btns, "Quit", self._force_quit, takefocus=False).pack(
-            side=tk.LEFT, padx=10
-        )
+        self._styled_button(btns, "Play", self.show_play_screen).pack(side=tk.LEFT, padx=10)
+        self._styled_button(btns, "Quit", self._on_close_window).pack(side=tk.LEFT, padx=10)
 
         return frame
 
     def _build_play_screen(self) -> tk.Frame:
-        """Floor picker: controls packed above the scene canvas so nothing overlaps."""
+        """Same pattern as the title screen: UI lives in a canvas window so clicks always work."""
         frame = tk.Frame(self.container, bg=BG)
+        canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
+        canvas.pack(fill=tk.BOTH, expand=True)
 
-        controls = tk.Frame(frame, bg=BG)
-        controls.pack(side=tk.TOP, fill=tk.X, padx=14, pady=(14, 10))
+        inner = tk.Frame(canvas, bg=BG)
+        inner_win = canvas.create_window(0, 0, window=inner, anchor=tk.N)
 
-        top_row = tk.Frame(controls, bg=BG)
-        top_row.pack(fill=tk.X)
-        self._styled_button(top_row, "Back to title", self.show_title_screen, takefocus=False).pack(
+        def place_inner(event: tk.Event | None = None) -> None:
+            cw = canvas.winfo_width()
+            ch = canvas.winfo_height()
+            if cw <= 1 or ch <= 1:
+                return
+            canvas.coords(inner_win, cw // 2, max(18, int(ch * 0.06)))
+            canvas.itemconfigure(inner_win, width=min(cw - 24, 780))
+
+        def on_play_configure(e: tk.Event) -> None:
+            if e.widget is not canvas:
+                return
+            draw_building_scene(canvas, e.width, e.height)
+            place_inner(e)
+
+        canvas.bind("<Configure>", on_play_configure)
+        self._play_canvas = canvas
+
+        top_row = tk.Frame(inner, bg=BG)
+        top_row.pack(fill=tk.X, pady=(0, 10))
+        self._styled_button(top_row, "Back to title", self.show_title_screen).pack(
             side=tk.LEFT, padx=(0, 12)
         )
 
         tk.Label(
-            controls,
-            text="Choose a floor: tap a number below (1–7).\n"
-            'Green “Play” is only on the title screen — here you use the digits.',
+            inner,
+            text="Click a floor number (1–7) to play.",
             font=self.sub_font,
             fg="#c8d0e0",
             bg=BG,
-            wraplength=780,
-            justify=tk.CENTER,
-        ).pack(fill=tk.X, pady=(14, 8))
+        ).pack(pady=(0, 8))
 
         self._rows_hint = tk.Label(
-            controls,
-            text="Rows 1–6 = survival · Row 6 adds lava · Row 7 = surprise · 5 HP · WASD / arrows",
+            inner,
+            text="Rows 1–6: survival · Row 6: lava · Row 7: special · WASD / arrows · 5 HP",
             font=self.sub_font,
             fg="#8b90a0",
             bg=BG,
-            wraplength=780,
+            wraplength=720,
             justify=tk.CENTER,
         )
-        self._rows_hint.pack(fill=tk.X, pady=(0, 10))
+        self._rows_hint.pack(pady=(0, 12))
 
-        row_fr = tk.Frame(controls, bg=BG)
-        row_fr.pack(fill=tk.X, pady=(6, 4))
+        row_fr = tk.Frame(inner, bg=BG)
+        row_fr.pack(pady=(0, 8))
         for n in range(1, 8):
             tk.Button(
                 row_fr,
@@ -2062,22 +2026,11 @@ class PeriodicWallApp:
                 activebackground="#4a556e",
                 relief=tk.FLAT,
                 width=3,
-                padx=5,
-                pady=8,
+                padx=4,
+                pady=6,
                 cursor="hand2",
-                takefocus=False,
                 command=lambda v=n: self._start_survival_from_row(v),
-            ).pack(side=tk.LEFT, padx=6)
-
-        self._play_canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
-        self._play_canvas.pack(fill=tk.BOTH, expand=True)
-
-        def on_play_canvas_configure(e: tk.Event) -> None:
-            if e.widget is not self._play_canvas:
-                return
-            draw_building_scene(self._play_canvas, e.width, e.height)
-
-        self._play_canvas.bind("<Configure>", on_play_canvas_configure)
+            ).pack(side=tk.LEFT, padx=5)
 
         return frame
 
@@ -2085,11 +2038,13 @@ class PeriodicWallApp:
         frame = tk.Frame(self.container, bg=BG)
 
         hud = tk.Frame(frame, bg=BG)
-        hud.pack(fill=tk.X, padx=12, pady=(10, 4))
+        hud.pack(fill=tk.X, padx=10, pady=8)
 
         hud_top = tk.Frame(hud, bg=BG)
         hud_top.pack(fill=tk.X)
-        hud_top.columnconfigure(2, weight=1)
+        self._styled_button(hud_top, "Leave building", self._survival_forfeit).pack(
+            side=tk.RIGHT
+        )
 
         self._survival_time_lbl = tk.Label(
             hud_top,
@@ -2098,7 +2053,7 @@ class PeriodicWallApp:
             bg=BG,
             fg=TITLE_FG,
         )
-        self._survival_time_lbl.grid(row=0, column=0, sticky=tk.W)
+        self._survival_time_lbl.pack(side=tk.LEFT)
 
         self._survival_hp_lbl = tk.Label(
             hud_top,
@@ -2107,37 +2062,20 @@ class PeriodicWallApp:
             bg=BG,
             fg="#7ec8a0",
         )
-        self._survival_hp_lbl.grid(row=0, column=1, sticky=tk.W, padx=(16, 12))
-
-        tk.Frame(hud_top, bg=BG).grid(row=0, column=2, sticky=tk.NSEW)
-
-        self._styled_button(hud_top, "Leave building", self._survival_forfeit, takefocus=False).grid(
-            row=0, column=3, sticky=tk.E
-        )
+        self._survival_hp_lbl.pack(side=tk.LEFT, padx=(16, 0))
 
         tk.Label(
             hud,
-            text="WASD move · W/↑ jump (air jumps) · S duck on ground · Mixed fuse → shocks · Same fuse → falling ball · Row 6: lava · Esc quits",
+            text="WASD move · W/↑ jump · S duck on ground",
             font=self.sub_font,
             bg=BG,
             fg="#8b90a0",
-            wraplength=880,
-            justify=tk.LEFT,
-        ).pack(fill=tk.X, anchor=tk.W, pady=(6, 4))
+        ).pack(fill=tk.X, anchor=tk.W, pady=(6, 0))
 
         self._survival_canvas = tk.Canvas(
             frame, highlightthickness=0, bd=0, bg="#12151f", takefocus=True
         )
         self._survival_canvas.pack(fill=tk.BOTH, expand=True)
-
-        def on_survival_map(_e: tk.Event) -> None:
-            if self._survival_active:
-                try:
-                    self._survival_canvas.focus_set()
-                except tk.TclError:
-                    pass
-
-        self._survival_canvas.bind("<Map>", on_survival_map)
 
         def on_survival_configure(e: tk.Event) -> None:
             if e.widget is not self._survival_canvas:
