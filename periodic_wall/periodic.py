@@ -344,6 +344,8 @@ HAZARD_VY_LAYER = 0.42
 HAZARD_RAIN_DENSITY_MULT = 5.0
 HAZARD_SPAWN_EVERY_FLOOR = 0.008
 HAZARD_SPAWN_BURST_MAX = 150
+FUSION_RESOLVE_MAX_OUTER = 48
+HAZARD_LIST_HARD_CAP = 900
 
 # Giant fused ball (same-symbol): diameter = this × min(w,h); spawns at fusion, falls, damages on overlap
 GIANT_BALL_DIAMETER_FRAC = 2.0 / 3.0
@@ -915,7 +917,7 @@ class PeriodicWallApp:
             "6",
             "7",
         ):
-            self._start_survival_from_row(int(e.keysym))
+            self._pick_row(int(e.keysym))
 
     def _on_root_key_up(self, e: tk.Event) -> None:
         if self._survival_active:
@@ -1088,6 +1090,36 @@ class PeriodicWallApp:
                 pass
             self._nuke_after_id = None
 
+    def _pick_row(self, n: int) -> None:
+        """Floor button / key: start survival (wrapped so errors show in a dialog)."""
+        if hasattr(self, "_floor_status_lbl"):
+            self._floor_status_lbl.config(text=f"Starting floor {n}…")
+            self.root.update_idletasks()
+        try:
+            self._start_survival_from_row(n)
+        except Exception as exc:
+            if hasattr(self, "_floor_status_lbl"):
+                self._floor_status_lbl.config(text="")
+            messagebox.showerror("Could not start floor", str(exc))
+
+    def _ensure_survival_canvas_size(self) -> None:
+        self.root.update_idletasks()
+        w = int(self._survival_canvas.winfo_width())
+        h = int(self._survival_canvas.winfo_height())
+        if w > 2 and h > 2:
+            self._survival_cw, self._survival_ch = w, h
+            return
+        rw = max(640, int(self.root.winfo_width()) - 24)
+        rh = max(360, int(self.root.winfo_height()) - 130)
+        self._survival_cw = max(400, rw)
+        self._survival_ch = max(300, rh)
+
+    def _schedule_survival_tick(self) -> None:
+        if self._survival_active:
+            self._survival_after_id = self.root.after(
+                SURVIVAL_FRAME_MS, self._survival_tick
+            )
+
     def _start_survival_from_row(self, n: int) -> None:
         self._stop_survival()
         self._stop_nuke()
@@ -1119,10 +1151,7 @@ class PeriodicWallApp:
 
         self._on_play_screen = False
         self._show_only(self.survival_screen)
-        self.root.update_idletasks()
-        wpix, hpix = self._survival_canvas.winfo_width(), self._survival_canvas.winfo_height()
-        if wpix > 2 and hpix > 2:
-            self._survival_cw, self._survival_ch = wpix, hpix
+        self._ensure_survival_canvas_size()
 
         cw = max(float(self._survival_cw), 400.0)
         ch = max(float(self._survival_ch), 300.0)
@@ -1139,7 +1168,10 @@ class PeriodicWallApp:
 
         self._draw_survival_room()
         self._survival_canvas.focus_set()
-        self._survival_tick()
+        c = self._survival_canvas
+        c.delete("dyn")
+        self._draw_stickman(c, self._survival_px, self._survival_py, False)
+        self._schedule_survival_tick()
 
     def _init_lava_level(self, cw: float, ch: float, floor_y: float) -> None:
         """Row 6: reachable platform chain from the floor; lava rises; world scrolls upward."""
@@ -1357,7 +1389,9 @@ class PeriodicWallApp:
         m = min(float(w), float(h))
         hz_list = self._survival_hazards
         changed = True
-        while changed:
+        outer = 0
+        while changed and outer < FUSION_RESOLVE_MAX_OUTER:
+            outer += 1
             changed = False
             for i in range(len(hz_list)):
                 for j in range(i + 1, len(hz_list)):
@@ -1604,6 +1638,9 @@ class PeriodicWallApp:
         self._survival_hazards = [
             z for z in self._survival_hazards if -220 < z["y"] < h + 80
         ]
+        if len(self._survival_hazards) > HAZARD_LIST_HARD_CAP:
+            self._survival_hazards.sort(key=lambda z: float(z["y"]))
+            self._survival_hazards = self._survival_hazards[-HAZARD_LIST_HARD_CAP:]
 
     def _draw_survival_hazards(self, c: tk.Canvas) -> None:
         for hz in self._survival_hazards:
@@ -2029,7 +2066,7 @@ class PeriodicWallApp:
 
         self._draw_stickman(c, px, py, duck)
 
-        self._survival_after_id = self.root.after(SURVIVAL_FRAME_MS, self._survival_tick)
+        self._schedule_survival_tick()
 
     def _survival_tick(self) -> None:
         if not self._survival_active:
@@ -2038,8 +2075,11 @@ class PeriodicWallApp:
         c = self._survival_canvas
         w, h = self._survival_cw, self._survival_ch
         if w <= 2 or h <= 2:
-            self._survival_after_id = self.root.after(SURVIVAL_FRAME_MS, self._survival_tick)
-            return
+            self._ensure_survival_canvas_size()
+            w, h = self._survival_cw, self._survival_ch
+            if w <= 2 or h <= 2:
+                self._schedule_survival_tick()
+                return
 
         dt = SURVIVAL_FRAME_MS / 1000.0
         elapsed = time.monotonic() - self._survival_start
@@ -2137,36 +2177,16 @@ class PeriodicWallApp:
         self._draw_survival_shockwaves(c, float(w), float(h))
         self._draw_stickman(c, px, py, duck)
 
-        self._survival_after_id = self.root.after(SURVIVAL_FRAME_MS, self._survival_tick)
+        self._schedule_survival_tick()
 
     def _build_title_screen(self) -> tk.Frame:
         frame = tk.Frame(self.container, bg=BG)
 
-        canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
-        canvas.place(x=0, y=0, relwidth=1, relheight=1)
-
-        inner = tk.Frame(canvas, bg=BG)
-        inner_win = canvas.create_window(0, 0, window=inner, anchor=tk.N)
-
-        def place_inner(event: tk.Event | None = None) -> None:
-            cw = canvas.winfo_width()
-            ch = canvas.winfo_height()
-            if cw <= 1 or ch <= 1:
-                return
-            canvas.coords(inner_win, cw // 2, max(24, int(ch * 0.12)))
-            canvas.itemconfigure(inner_win, width=cw)
-
-        def on_canvas_configure(e: tk.Event) -> None:
-            if e.widget is not canvas:
-                return
-            draw_wall_scene(canvas, e.width, e.height)
-            place_inner(e)
-            canvas.tag_raise(inner_win)
-
-        canvas.bind("<Configure>", on_canvas_configure)
+        header = tk.Frame(frame, bg=BG)
+        header.pack(side=tk.TOP, fill=tk.X, padx=16, pady=(16, 10))
 
         tk.Label(
-            inner,
+            header,
             text="The Periodic Wall of Elements",
             font=self.title_font,
             fg=TITLE_FG,
@@ -2176,17 +2196,27 @@ class PeriodicWallApp:
         ).pack(pady=(0, 8))
 
         tk.Label(
-            inner,
-            text="Press Enter or click Play to start.",
+            header,
+            text="Press Enter or click Play — then pick a floor (1–7).",
             font=self.sub_font,
             fg="#8b90a0",
             bg=BG,
-        ).pack(pady=(0, 36))
+        ).pack(pady=(0, 16))
 
-        btns = tk.Frame(inner, bg=BG)
+        btns = tk.Frame(header, bg=BG)
         btns.pack()
         self._styled_button(btns, "Play", self.show_play_screen).pack(side=tk.LEFT, padx=10)
         self._styled_button(btns, "Quit", self._on_close_window).pack(side=tk.LEFT, padx=10)
+
+        canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        def on_title_configure(e: tk.Event) -> None:
+            if e.widget is not canvas:
+                return
+            draw_wall_scene(canvas, e.width, e.height)
+
+        canvas.bind("<Configure>", on_title_configure)
 
         return frame
 
@@ -2235,13 +2265,23 @@ class PeriodicWallApp:
                 bg=ROW_BTN_IDLE,
                 activeforeground=TITLE_FG,
                 activebackground="#4a556e",
-                relief=tk.FLAT,
+                relief=tk.RAISED,
+                bd=2,
                 width=3,
                 padx=4,
                 pady=6,
                 cursor="hand2",
-                command=lambda v=n: self._start_survival_from_row(v),
+                command=lambda v=n: self._pick_row(v),
             ).pack(side=tk.LEFT, padx=5)
+
+        self._floor_status_lbl = tk.Label(
+            controls,
+            text="",
+            font=self.sub_font,
+            fg="#7ec8a0",
+            bg=BG,
+        )
+        self._floor_status_lbl.pack(pady=(4, 0))
 
         tk.Label(
             controls,
