@@ -7,4 +7,4 @@ This AI is called Cursor.
 
 ## Periodic Wall (desktop)
 
-Python + Tkinter — lives in [`periodic_wall/`](periodic_wall/). Run `python3 periodic.py` from that folder after cloning.
+Python + Tkinter — lives in [`periodic_wall/`](periodic_wall/). **v0:** `python3 main.py` from that folder. Legacy full game: `reference/periodic.py`.

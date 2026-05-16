@@ -5,44 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Periodic Wall — Clint's Games</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            margin: 0;
-            padding: 24px;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            color: #fff;
-            min-height: 100vh;
-            line-height: 1.6;
-        }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #1a1a2e; color: #fff; line-height: 1.6; }
         a { color: #4ecca3; }
-        .box {
-            max-width: 720px;
-            margin: 0 auto;
-            background: rgba(255,255,255,0.08);
-            border-radius: 15px;
-            padding: 28px;
-        }
+        .box { max-width: 720px; margin: 0 auto; background: rgba(255,255,255,0.08); border-radius: 15px; padding: 28px; }
         h1 { color: #4ecca3; margin-top: 0; }
-        pre {
-            background: #0d1117;
-            padding: 16px;
-            border-radius: 10px;
-            overflow-x: auto;
-            font-size: 14px;
-        }
-        .back { margin-bottom: 20px; }
+        pre { background: #0d1117; padding: 16px; border-radius: 10px; }
     </style>
 </head>
 <body>
     <div class="box">
-        <p class="back"><a href="../index.html">← Back to collection</a></p>
         <h1>The Periodic Wall of Elements</h1>
-        <p>This one is a <strong>desktop game</strong> (Python + Tkinter). It does not run in the browser.</p>
-        <p>Clone the repo, then from this folder run:</p>
+        <p><strong>Version 0</strong> — one level, dodge falling H/He balls. Built from the ground up; see <code>DESIGN.md</code>.</p>
         <pre><code>cd periodic_wall
-python3 periodic.py</code></pre>
-        <p>On macOS, if Python/Tk fails, install Xcode Command Line Tools: <code>xcode-select --install</code>.</p>
-        <p><a href="https://github.com/zikegcwk/clint_games/tree/main/periodic_wall">View files on GitHub</a></p>
+python3 main.py
+pytest</code></pre>
+        <p><a href="reference/index.html">Legacy game</a> (fusion, 7 floors) · <a href="https://github.com/zikegcwk/clint_games/tree/main/periodic_wall">GitHub</a></p>
     </div>
 </body>
 </html>

@@ -290,10 +290,14 @@ PERIOD_RAIN_POOLS = _build_period_rain_pools()
 
 PERIOD_LABELS = ("H–He", "Li–Ne", "Na–Ar", "K–Kr", "Rb–Xe", "Cs–Rn", "Fr–Cm")
 
+# Simplified build: only three playable floors (periods 1–3). More floors = later layers.
+MAX_FLOOR = 3
+ACTIVE_PERIOD_LABELS = PERIOD_LABELS[:MAX_FLOOR]
+
 
 @dataclass(frozen=True)
 class RowTuning:
-    """Row 1 = very easy … row 5 = hard; row 6 = lava + heaviest rain."""
+    """Per-floor rain difficulty (floors 1–3 in this build)."""
 
     rain_density: float
     spawn_interval_mult: float
@@ -305,14 +309,26 @@ class RowTuning:
     lava_rise_mult: float = 1.0
 
 
-# Index 0 = row 1 … index 5 = row 6
+@dataclass(frozen=True)
+class FloorRules:
+    """Which rule layers are on for this floor (see DESIGN.md)."""
+
+    fusion: bool
+    giant_ball: bool
+    shockwaves: bool
+
+
+# Index 0 = floor 1 … index 2 = floor 3
 ROW_TUNINGS: tuple[RowTuning, ...] = (
-    RowTuning(0.10, 5.5, 4, 0, 0.32, 0.30, 0.45),  # 1 — extremely easy
-    RowTuning(0.22, 3.6, 10, 1, 0.48, 0.42, 0.58),  # 2
-    RowTuning(0.40, 2.4, 24, 2, 0.65, 0.58, 0.72),  # 3
-    RowTuning(0.62, 1.55, 48, 4, 0.82, 0.75, 0.86),  # 4
-    RowTuning(0.92, 1.0, 88, 6, 1.05, 0.95, 1.0),  # 5 — hard
-    RowTuning(1.12, 0.82, 120, 7, 1.18, 1.10, 1.0, 1.22),  # 6 — lava
+    RowTuning(0.10, 5.5, 4, 0, 0.32, 0.30, 0.45),  # 1 — dodge only, very easy
+    RowTuning(0.22, 3.6, 10, 1, 0.48, 0.42, 0.58),  # 2 — fusion on
+    RowTuning(0.40, 2.4, 24, 2, 0.65, 0.58, 0.72),  # 3 — fusion + busier rain
+)
+
+FLOOR_RULES: tuple[FloorRules, ...] = (
+    FloorRules(fusion=False, giant_ball=False, shockwaves=False),  # layer A
+    FloorRules(fusion=True, giant_ball=True, shockwaves=True),  # layer B
+    FloorRules(fusion=True, giant_ball=True, shockwaves=True),  # layer B + harder rain
 )
 
 SURVIVE_SECONDS = 300.0
@@ -787,12 +803,24 @@ class PeriodicWallApp:
         self.survival_screen = self._build_survival_screen()
         self.nuke_screen = self._build_nuke_screen()
 
+        # Stack screens; pack_forget() leaves ghost click targets on macOS Tk.
+        for scr in (
+            self.title_screen,
+            self.play_screen,
+            self.survival_screen,
+            self.nuke_screen,
+        ):
+            scr.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # Floor picker on root (not inside screens) so nothing can cover the buttons.
+        self._play_bar = self._build_play_bar()
+
         self.root.bind("<Return>", self._on_enter_key)
         self.root.bind("<KP_Enter>", self._on_enter_key)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close_window)
-        self.root.bind("<KeyPress>", self._on_root_key_down)
-        self.root.bind("<KeyRelease>", self._on_root_key_up)
+        self.root.bind_all("<KeyPress>", self._on_root_key_down)
+        self.root.bind_all("<KeyRelease>", self._on_root_key_up)
 
         self.show_title_screen()
 
@@ -964,8 +992,8 @@ class PeriodicWallApp:
 
     @staticmethod
     def _period_element_label(row: int) -> str:
-        r = max(1, min(7, row))
-        return PERIOD_LABELS[r - 1]
+        r = max(1, min(MAX_FLOOR, row))
+        return ACTIVE_PERIOD_LABELS[r - 1]
 
     def _integrate_survival_giant_ball(
         self,
@@ -1092,6 +1120,8 @@ class PeriodicWallApp:
 
     def _pick_row(self, n: int) -> None:
         """Floor button / key: start survival (wrapped so errors show in a dialog)."""
+        if n < 1 or n > MAX_FLOOR:
+            return
         if hasattr(self, "_floor_status_lbl"):
             self._floor_status_lbl.config(text=f"Starting floor {n}…")
             self.root.update_idletasks()
@@ -1106,13 +1136,14 @@ class PeriodicWallApp:
         self.root.update_idletasks()
         w = int(self._survival_canvas.winfo_width())
         h = int(self._survival_canvas.winfo_height())
-        if w > 2 and h > 2:
-            self._survival_cw, self._survival_ch = w, h
-            return
-        rw = max(640, int(self.root.winfo_width()) - 24)
-        rh = max(360, int(self.root.winfo_height()) - 130)
-        self._survival_cw = max(400, rw)
-        self._survival_ch = max(300, rh)
+        if w <= 2 or h <= 2:
+            w = max(640, int(self.root.winfo_width()) - 24)
+            h = max(360, int(self.root.winfo_height()) - 130)
+            w, h = max(400, w), max(300, h)
+            self._survival_canvas.config(width=w, height=h)
+            self.root.update_idletasks()
+        self._survival_cw = max(400, w)
+        self._survival_ch = max(300, h)
 
     def _schedule_survival_tick(self) -> None:
         if self._survival_active:
@@ -1124,8 +1155,7 @@ class PeriodicWallApp:
         self._stop_survival()
         self._stop_nuke()
         self._period_rows = n
-        if n == 7:
-            self._play_nuke_cutscene()
+        if n < 1 or n > MAX_FLOOR:
             return
 
         self._survival_rows = n
@@ -1150,6 +1180,7 @@ class PeriodicWallApp:
             )
 
         self._on_play_screen = False
+        self._hide_play_bar()
         self._show_only(self.survival_screen)
         self._ensure_survival_canvas_size()
 
@@ -1168,9 +1199,11 @@ class PeriodicWallApp:
 
         self._draw_survival_room()
         self._survival_canvas.focus_set()
+        self.root.focus_force()
         c = self._survival_canvas
         c.delete("dyn")
         self._draw_stickman(c, self._survival_px, self._survival_py, False)
+        self.root.update_idletasks()
         self._schedule_survival_tick()
 
     def _init_lava_level(self, cw: float, ch: float, floor_y: float) -> None:
@@ -1747,6 +1780,7 @@ class PeriodicWallApp:
         self._stop_nuke()
         self._title_active = False
         self._on_play_screen = False
+        self._hide_play_bar()
         self._nuke_start = time.monotonic()
         self._show_only(self.nuke_screen)
         self._nuke_canvas.focus_set()
@@ -2220,31 +2254,78 @@ class PeriodicWallApp:
 
         return frame
 
-    def _build_play_screen(self) -> tk.Frame:
-        """Controls on top; element-brick wall + lying stickman on the canvas below."""
-        frame = tk.Frame(self.container, bg=BG)
+    def _build_play_bar(self) -> tk.Frame:
+        """Floor picker lives on the root window so hidden screens cannot block clicks."""
+        bar = tk.Frame(self.root, bg="#1e2433", padx=12, pady=10)
 
-        controls = tk.Frame(frame, bg=BG)
-        controls.pack(side=tk.TOP, fill=tk.X, padx=14, pady=(12, 8))
-
-        top_row = tk.Frame(controls, bg=BG)
+        top_row = tk.Frame(bar, bg="#1e2433")
         top_row.pack(fill=tk.X)
         self._styled_button(top_row, "Back to title", self.show_title_screen).pack(
             side=tk.LEFT, padx=(0, 12)
         )
 
         tk.Label(
-            controls,
-            text="Pick a floor (1–7) to enter the lab — stickman is on the element wall below.",
+            bar,
+            text="FLOORS — click a number or press 1–7 on the keyboard",
+            font=self.btn_font,
+            fg="#e8ecf4",
+            bg="#1e2433",
+        ).pack(pady=(6, 8))
+
+        row_fr = tk.Frame(bar, bg="#1e2433")
+        row_fr.pack()
+        floor_font = tkfont.Font(family="Helvetica", size=24, weight="bold")
+        for n in range(1, 8):
+            tk.Button(
+                row_fr,
+                text=str(n),
+                font=floor_font,
+                fg=TITLE_FG,
+                bg=ROW_BTN_IDLE,
+                activeforeground=TITLE_FG,
+                activebackground="#5a6a88",
+                relief=tk.RAISED,
+                bd=3,
+                width=2,
+                padx=16,
+                pady=8,
+                cursor="hand2",
+                takefocus=False,
+                command=lambda v=n: self._pick_row(v),
+            ).pack(side=tk.LEFT, padx=6)
+
+        self._floor_status_lbl = tk.Label(
+            bar,
+            text="",
             font=self.sub_font,
-            fg="#c8d0e0",
-            bg=BG,
-            wraplength=760,
-            justify=tk.CENTER,
-        ).pack(fill=tk.X, pady=(10, 6))
+            fg="#7ec8a0",
+            bg="#1e2433",
+        )
+        self._floor_status_lbl.pack(pady=(8, 0))
+
+        tk.Label(
+            bar,
+            text="1=H–He  2=Li–Ne  3=Na–Ar  4=K–Kr  5=Rb–Xe  6=Cs–Rn  7=meltdown",
+            font=self.sub_font,
+            fg="#8b90a0",
+            bg="#1e2433",
+        ).pack(pady=(4, 0))
+
+        return bar
+
+    def _show_play_bar(self) -> None:
+        self._play_bar.pack(side=tk.TOP, fill=tk.X, before=self.container)
+        self._play_bar.lift()
+
+    def _hide_play_bar(self) -> None:
+        self._play_bar.pack_forget()
+
+    def _build_play_screen(self) -> tk.Frame:
+        """Wall art only — floor buttons are on self._play_bar (root window)."""
+        frame = tk.Frame(self.container, bg=BG)
 
         self._rows_hint = tk.Label(
-            controls,
+            frame,
             text="Each floor uses only that period's elements. Row 1 = very easy · Row 5 = hard · Row 6 = lava",
             font=self.sub_font,
             fg="#8b90a0",
@@ -2252,46 +2333,11 @@ class PeriodicWallApp:
             wraplength=760,
             justify=tk.CENTER,
         )
-        self._rows_hint.pack(fill=tk.X, pady=(0, 10))
+        self._rows_hint.pack(pady=(8, 4))
 
-        row_fr = tk.Frame(controls, bg=BG)
-        row_fr.pack(pady=(0, 6))
-        for n in range(1, 8):
-            tk.Button(
-                row_fr,
-                text=str(n),
-                font=self.row_btn_font,
-                fg=TITLE_FG,
-                bg=ROW_BTN_IDLE,
-                activeforeground=TITLE_FG,
-                activebackground="#4a556e",
-                relief=tk.RAISED,
-                bd=2,
-                width=3,
-                padx=4,
-                pady=6,
-                cursor="hand2",
-                command=lambda v=n: self._pick_row(v),
-            ).pack(side=tk.LEFT, padx=5)
-
-        self._floor_status_lbl = tk.Label(
-            controls,
-            text="",
-            font=self.sub_font,
-            fg="#7ec8a0",
-            bg=BG,
+        self._play_canvas = tk.Canvas(
+            frame, highlightthickness=0, bd=0, bg=BG, takefocus=False
         )
-        self._floor_status_lbl.pack(pady=(4, 0))
-
-        tk.Label(
-            controls,
-            text="1=H–He  2=Li–Ne  3=Na–Ar  4=K–Kr  5=Rb–Xe  6=Cs–Rn  7=meltdown",
-            font=self.sub_font,
-            fg="#6a7080",
-            bg=BG,
-        ).pack(pady=(0, 4))
-
-        self._play_canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
         self._play_canvas.pack(fill=tk.BOTH, expand=True)
 
         def on_play_configure(e: tk.Event) -> None:
@@ -2300,6 +2346,14 @@ class PeriodicWallApp:
             draw_wall_scene(self._play_canvas, e.width, e.height)
 
         self._play_canvas.bind("<Configure>", on_play_configure)
+
+        def on_wall_click(_e: tk.Event) -> None:
+            if hasattr(self, "_floor_status_lbl"):
+                self._floor_status_lbl.config(
+                    text="Use the FLOORS bar at the very top (1–7), not the bricks."
+                )
+
+        self._play_canvas.bind("<Button-1>", on_wall_click)
 
         return frame
 
@@ -2378,9 +2432,8 @@ class PeriodicWallApp:
         return frame
 
     def _show_only(self, screen: tk.Frame) -> None:
-        for child in self.container.winfo_children():
-            child.pack_forget()
-        screen.pack(fill=tk.BOTH, expand=True)
+        screen.tkraise()
+        self.root.update_idletasks()
 
     def show_title_screen(self) -> None:
         self._cancel_banner_anim()
@@ -2388,6 +2441,7 @@ class PeriodicWallApp:
         self._stop_nuke()
         self._title_active = True
         self._on_play_screen = False
+        self._hide_play_bar()
         self._show_only(self.title_screen)
 
     def show_play_screen(self) -> None:
@@ -2396,8 +2450,20 @@ class PeriodicWallApp:
         self._stop_nuke()
         self._title_active = False
         self._on_play_screen = True
+        self._show_play_bar()
         self._show_only(self.play_screen)
+        if hasattr(self, "_floor_status_lbl"):
+            self._floor_status_lbl.config(text="")
         self.root.update_idletasks()
+        pw = int(self._play_canvas.winfo_width())
+        ph = int(self._play_canvas.winfo_height())
+        if pw <= 2 or ph <= 2:
+            pw = max(400, int(self.root.winfo_width()) - 24)
+            ph = max(200, int(self.root.winfo_height()) - 260)
+            self._play_canvas.config(width=pw, height=ph)
+            self.root.update_idletasks()
+        if pw > 2 and ph > 2:
+            draw_wall_scene(self._play_canvas, pw, ph)
         self.root.focus_set()
 
     def run(self) -> None:
