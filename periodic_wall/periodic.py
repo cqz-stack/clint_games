@@ -10,6 +10,7 @@ import random
 import time
 import tkinter as tk
 from collections.abc import Callable
+from dataclasses import dataclass
 from tkinter import font as tkfont
 from tkinter import messagebox
 
@@ -175,29 +176,144 @@ PERIOD_HAZARDS: list[list[tuple[str, str]]] = [
     ],
 ]
 
-# First 20 elements (Z = 1–20) used for falling rain only
-ELEMENT_RAIN_DATA: list[tuple[str, str, int]] = [
-    ("H", "#7eb8ff", 1),
-    ("He", "#b8c8ff", 2),
-    ("Li", "#cc99aa", 3),
-    ("Be", "#c8d8c8", 4),
-    ("B", "#d4a574", 5),
-    ("C", "#8899aa", 6),
-    ("N", "#5599dd", 7),
-    ("O", "#66aacc", 8),
-    ("F", "#55dd88", 9),
-    ("Ne", "#99ccff", 10),
-    ("Na", "#c9b882", 11),
-    ("Mg", "#dde0e8", 12),
-    ("Al", "#b8c0c8", 13),
-    ("Si", "#a8a898", 14),
-    ("P", "#ffaa44", 15),
-    ("S", "#ccb833", 16),
-    ("Cl", "#66cc77", 17),
-    ("Ar", "#99bbdd", 18),
-    ("K", "#d4a574", 19),
-    ("Ca", "#e8e0d8", 20),
-]
+# Atomic numbers for hazard size / fall speed (isotopes map to parent element)
+SYMBOL_Z: dict[str, int] = {
+    "H": 1,
+    "D": 1,
+    "T": 1,
+    "He": 2,
+    "Li": 3,
+    "Be": 4,
+    "B": 5,
+    "C": 6,
+    "N": 7,
+    "O": 8,
+    "F": 9,
+    "Ne": 10,
+    "Na": 11,
+    "Mg": 12,
+    "Al": 13,
+    "Si": 14,
+    "P": 15,
+    "S": 16,
+    "Cl": 17,
+    "Ar": 18,
+    "K": 19,
+    "Ca": 20,
+    "Sc": 21,
+    "Ti": 22,
+    "V": 23,
+    "Cr": 24,
+    "Mn": 25,
+    "Fe": 26,
+    "Co": 27,
+    "Ni": 28,
+    "Cu": 29,
+    "Zn": 30,
+    "Ga": 31,
+    "Ge": 32,
+    "As": 33,
+    "Se": 34,
+    "Br": 35,
+    "Kr": 36,
+    "Rb": 37,
+    "Sr": 38,
+    "Y": 39,
+    "Zr": 40,
+    "Nb": 41,
+    "Mo": 42,
+    "Tc": 43,
+    "Ru": 44,
+    "Rh": 45,
+    "Pd": 46,
+    "Ag": 47,
+    "Cd": 48,
+    "In": 49,
+    "Sn": 50,
+    "Sb": 51,
+    "Te": 52,
+    "I": 53,
+    "Xe": 54,
+    "Cs": 55,
+    "Ba": 56,
+    "La": 57,
+    "Ce": 58,
+    "Pr": 59,
+    "Nd": 60,
+    "Pm": 61,
+    "Sm": 62,
+    "Eu": 63,
+    "Gd": 64,
+    "Tb": 65,
+    "Dy": 66,
+    "Ho": 67,
+    "Er": 68,
+    "Tm": 69,
+    "Yb": 70,
+    "Lu": 71,
+    "Hf": 72,
+    "Ta": 73,
+    "W": 74,
+    "Re": 75,
+    "Os": 76,
+    "Ir": 77,
+    "Pt": 78,
+    "Au": 79,
+    "Hg": 80,
+    "Tl": 81,
+    "Pb": 82,
+    "Bi": 83,
+    "Po": 84,
+    "At": 85,
+    "Rn": 86,
+    "Fr": 87,
+    "Ra": 88,
+    "Ac": 89,
+    "Th": 90,
+    "Pa": 91,
+    "U": 92,
+    "Np": 93,
+    "Pu": 94,
+    "Am": 95,
+    "Cm": 96,
+}
+
+
+def _build_period_rain_pools() -> list[list[tuple[str, str, int]]]:
+    return [
+        [(sym, col, SYMBOL_Z.get(sym, 1)) for sym, col in period]
+        for period in PERIOD_HAZARDS
+    ]
+
+
+PERIOD_RAIN_POOLS = _build_period_rain_pools()
+
+PERIOD_LABELS = ("H–He", "Li–Ne", "Na–Ar", "K–Kr", "Rb–Xe", "Cs–Rn", "Fr–Cm")
+
+
+@dataclass(frozen=True)
+class RowTuning:
+    """Row 1 = very easy … row 5 = hard; row 6 = lava + heaviest rain."""
+
+    rain_density: float
+    spawn_interval_mult: float
+    burst_max: int
+    layer_max: int
+    vy_mult: float
+    vx_mult: float
+    z_scale: float
+    lava_rise_mult: float = 1.0
+
+
+# Index 0 = row 1 … index 5 = row 6
+ROW_TUNINGS: tuple[RowTuning, ...] = (
+    RowTuning(0.10, 5.5, 4, 0, 0.32, 0.30, 0.45),  # 1 — extremely easy
+    RowTuning(0.22, 3.6, 10, 1, 0.48, 0.42, 0.58),  # 2
+    RowTuning(0.40, 2.4, 24, 2, 0.65, 0.58, 0.72),  # 3
+    RowTuning(0.62, 1.55, 48, 4, 0.82, 0.75, 0.86),  # 4
+    RowTuning(0.92, 1.0, 88, 6, 1.05, 0.95, 1.0),  # 5 — hard
+    RowTuning(1.12, 0.82, 120, 7, 1.18, 1.10, 1.0, 1.22),  # 6 — lava
+)
 
 SURVIVE_SECONDS = 300.0
 SURVIVAL_FRAME_MS = 33
@@ -777,6 +893,28 @@ class PeriodicWallApp:
     def _pick_rain_spawn_x(self, w: float, h: float, margin: float) -> float:
         return random.uniform(margin, max(margin + 1, w - margin))
 
+    @staticmethod
+    def _row_tuning(row: int) -> RowTuning:
+        return ROW_TUNINGS[max(1, min(6, row)) - 1]
+
+    @staticmethod
+    def _game_z_for_row(row: int, atomic_z: int) -> int:
+        pool = PERIOD_RAIN_POOLS[max(1, min(7, row)) - 1]
+        zs = [z for _, _, z in pool]
+        lo, hi = min(zs), max(zs)
+        tuning = PeriodicWallApp._row_tuning(row)
+        if hi <= lo:
+            gz = 10
+        else:
+            t = (atomic_z - lo) / (hi - lo)
+            gz = 1 + int(round(t * 19))
+        return max(1, min(20, int(1 + (gz - 1) * tuning.z_scale)))
+
+    @staticmethod
+    def _period_element_label(row: int) -> str:
+        r = max(1, min(7, row))
+        return PERIOD_LABELS[r - 1]
+
     def _integrate_survival_giant_ball(
         self,
         w: float,
@@ -919,6 +1057,15 @@ class PeriodicWallApp:
         self._survival_active = True
         if hasattr(self, "_survival_hp_lbl"):
             self._survival_hp_lbl.config(text=f"HP: {PLAYER_MAX_HP}")
+        if hasattr(self, "_survival_time_lbl") and n <= 6:
+            diff = ("easy", "light", "medium", "tough", "hard", "lava")[
+                n - 1
+            ]
+            self._survival_time_lbl.config(
+                text=(
+                    f"Survive: 5:00 · Period {n} ({self._period_element_label(n)}) · {diff}"
+                )
+            )
 
         self._show_only(self.survival_screen)
         self.root.update_idletasks()
@@ -1349,36 +1496,44 @@ class PeriodicWallApp:
             i += 1
         return False
 
-    def _spawn_survival_hazards_tick(self, w: float, h: float, dt: float, rows: int) -> None:
-        base_every = max(0.05, 0.32 - rows * 0.035)
+    def _spawn_survival_hazards_tick(self, w: float, h: float, dt: float, row: int) -> None:
+        row = max(1, min(6, row))
+        tuning = self._row_tuning(row)
+        pool = PERIOD_RAIN_POOLS[row - 1]
+        if not pool:
+            return
+
+        base_every = 0.30 * tuning.spawn_interval_mult
         spawn_every = max(
             HAZARD_SPAWN_EVERY_FLOOR,
-            base_every / HAZARD_RAIN_DENSITY_MULT,
+            base_every / (HAZARD_RAIN_DENSITY_MULT * tuning.rain_density),
         )
         self._survival_spawn_accum += dt
+        burst_cap = min(HAZARD_SPAWN_BURST_MAX, tuning.burst_max)
         spawns_left = min(
-            HAZARD_SPAWN_BURST_MAX,
-            int((12 + rows * 4) * HAZARD_RAIN_DENSITY_MULT),
+            burst_cap,
+            max(1, int((6 + row * 2) * HAZARD_RAIN_DENSITY_MULT * tuning.rain_density)),
         )
         while self._survival_spawn_accum >= spawn_every and spawns_left > 0:
             spawns_left -= 1
             self._survival_spawn_accum -= spawn_every
-            sym, col, z = random.choice(ELEMENT_RAIN_DATA)
+            sym, col, atomic_z = random.choice(pool)
+            game_z = self._game_z_for_row(row, atomic_z)
             margin = 32
-            layer = random.randint(0, min(7, 2 + rows))
+            layer = random.randint(0, tuning.layer_max)
             y_spawn = -15.0 - layer * random.uniform(45, 95)
-            r = self._hazard_radius_for_z(w, h, z)
-            vy = self._hazard_vy_for_z(z, layer)
+            r = self._hazard_radius_for_z(w, h, game_z)
+            vy = self._hazard_vy_for_z(game_z, layer) * tuning.vy_mult
             x = self._pick_rain_spawn_x(w, h, margin)
             self._survival_hazards.append(
                 {
                     "x": x,
                     "y": y_spawn,
-                    "vx": random.uniform(-1.1, 1.1) * (1 + rows * 0.12),
+                    "vx": random.uniform(-1.1, 1.1) * (0.6 + row * 0.08) * tuning.vx_mult,
                     "vy": vy,
                     "sym": sym,
                     "col": col,
-                    "z": z,
+                    "z": game_z,
                     "r": r,
                     "kind": random.choice(("gas", "gas", "pool", "shard")),
                 }
@@ -1566,11 +1721,28 @@ class PeriodicWallApp:
         c.create_rectangle(0, floor_y, w, h, fill="#1e2433", outline="", tags="room")
         c.create_line(0, floor_y, w, floor_y, fill="#3d4458", width=2, tags="room")
         c.create_rectangle(0, 0, w, 36, fill="#0e1118", outline="", tags="room")
-        hint = (
-            "Row 6 — fast lava; rain Z=1–20. Mixed → two vertical traveling shocks (wider if fused above you). Same → falling ⅔-screen ball (crush damage). Infinite air jumps. 5 HP."
-            if self._survival_rows == 6
-            else "Inside the lab — rain Z=1–20. Mixed: two vertical shocks. Same: falling ⅔-screen ball (crush damage). Infinite mid-air jumps. 5 HP."
-        )
+        row = self._survival_rows
+        period = self._period_element_label(row)
+        if row == 6:
+            hint = (
+                f"Period 6 only ({period}) · rising lava · very heavy rain · "
+                "mixed → vertical shocks · same → falling ball · 5 HP"
+            )
+        elif row == 1:
+            hint = (
+                f"Period 1 only ({period}) · gentle rain · "
+                "mixed → vertical shocks · same → falling ball · 5 HP"
+            )
+        elif row >= 5:
+            hint = (
+                f"Period {row} only ({period}) · intense rain · "
+                "mixed → vertical shocks · same → falling ball · 5 HP"
+            )
+        else:
+            hint = (
+                f"Period {row} only ({period}) · "
+                "mixed → vertical shocks · same → falling ball · 5 HP"
+            )
         c.create_text(
             16,
             18,
@@ -1593,7 +1765,10 @@ class PeriodicWallApp:
         """Row 6: rising lava, platforms, falling elements, fusions & shockwaves."""
         assert self._lava_surface_y is not None
         ls = self._lava_surface_y
-        rise = LAVA_RISE_BASE_PX_S + (elapsed / 60.0) * LAVA_RISE_RAMP_PER_MIN
+        lava_mult = self._row_tuning(6).lava_rise_mult
+        rise = (
+            LAVA_RISE_BASE_PX_S + (elapsed / 60.0) * LAVA_RISE_RAMP_PER_MIN
+        ) * lava_mult
         self._lava_surface_y = ls - rise * dt
 
         now = time.monotonic()
@@ -2004,7 +2179,7 @@ class PeriodicWallApp:
 
         self._rows_hint = tk.Label(
             inner,
-            text="Rows 1–6: survival · Row 6: lava · Row 7: special · WASD / arrows · 5 HP",
+            text="Each floor = that period's elements only. Row 1 is very easy; row 5 is hard; row 6 adds lava. Row 7 = ???",
             font=self.sub_font,
             fg="#8b90a0",
             bg=BG,
@@ -2031,6 +2206,14 @@ class PeriodicWallApp:
                 cursor="hand2",
                 command=lambda v=n: self._start_survival_from_row(v),
             ).pack(side=tk.LEFT, padx=5)
+
+        tk.Label(
+            inner,
+            text="1=H–He  2=Li–Ne  3=Na–Ar  4=K–Kr  5=Rb–Xe  6=Cs–Rn  7=???",
+            font=self.sub_font,
+            fg="#6a7080",
+            bg=BG,
+        ).pack(pady=(4, 0))
 
         return frame
 
