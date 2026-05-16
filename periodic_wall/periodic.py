@@ -743,6 +743,7 @@ class PeriodicWallApp:
         self.row_btn_font = tkfont.Font(family="Helvetica", size=16, weight="bold")
 
         self._title_active = True
+        self._on_play_screen = False
         self._period_rows: int | None = None
 
         self._survival_after_id: str | None = None
@@ -788,6 +789,8 @@ class PeriodicWallApp:
         self.root.bind("<KP_Enter>", self._on_enter_key)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close_window)
+        self.root.bind("<KeyPress>", self._on_root_key_down)
+        self.root.bind("<KeyRelease>", self._on_root_key_up)
 
         self.show_title_screen()
 
@@ -870,6 +873,53 @@ class PeriodicWallApp:
     def _on_enter_key(self, event: tk.Event) -> None:
         if self._title_active:
             self.show_play_screen()
+
+    def _survival_key_down(self, e: tk.Event) -> None:
+        k = e.keysym
+        if k in ("Left", "Right"):
+            self._survival_keys.add(k)
+        elif k in ("a", "A"):
+            self._survival_keys.add("a")
+        elif k in ("d", "D"):
+            self._survival_keys.add("d")
+        elif k in ("w", "W", "Up"):
+            self._jump_queued = True
+        elif k in ("s", "S"):
+            self._survival_keys.add("s")
+        elif k == "Down":
+            self._survival_keys.add("down")
+
+    def _survival_key_up(self, e: tk.Event) -> None:
+        k = e.keysym
+        if k in ("Left", "Right"):
+            self._survival_keys.discard(k)
+        elif k in ("a", "A"):
+            self._survival_keys.discard("a")
+        elif k in ("d", "D"):
+            self._survival_keys.discard("d")
+        elif k in ("s", "S"):
+            self._survival_keys.discard("s")
+        elif k == "Down":
+            self._survival_keys.discard("down")
+
+    def _on_root_key_down(self, e: tk.Event) -> None:
+        if self._survival_active:
+            self._survival_key_down(e)
+            return
+        if self._on_play_screen and e.keysym in (
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+        ):
+            self._start_survival_from_row(int(e.keysym))
+
+    def _on_root_key_up(self, e: tk.Event) -> None:
+        if self._survival_active:
+            self._survival_key_up(e)
 
     def _stop_survival(self) -> None:
         self._survival_active = False
@@ -1067,6 +1117,7 @@ class PeriodicWallApp:
                 )
             )
 
+        self._on_play_screen = False
         self._show_only(self.survival_screen)
         self.root.update_idletasks()
         wpix, hpix = self._survival_canvas.winfo_width(), self._survival_canvas.winfo_height()
@@ -1658,6 +1709,7 @@ class PeriodicWallApp:
         self._stop_survival()
         self._stop_nuke()
         self._title_active = False
+        self._on_play_screen = False
         self._nuke_start = time.monotonic()
         self._show_only(self.nuke_screen)
         self._nuke_canvas.focus_set()
@@ -2109,6 +2161,7 @@ class PeriodicWallApp:
                 return
             draw_wall_scene(canvas, e.width, e.height)
             place_inner(e)
+            canvas.tag_raise(inner_win)
 
         canvas.bind("<Configure>", on_canvas_configure)
 
@@ -2138,58 +2191,41 @@ class PeriodicWallApp:
         return frame
 
     def _build_play_screen(self) -> tk.Frame:
-        """Same pattern as the title screen: UI lives in a canvas window so clicks always work."""
+        """Controls on top; element-brick wall + lying stickman on the canvas below."""
         frame = tk.Frame(self.container, bg=BG)
-        canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
-        canvas.pack(fill=tk.BOTH, expand=True)
 
-        inner = tk.Frame(canvas, bg=BG)
-        inner_win = canvas.create_window(0, 0, window=inner, anchor=tk.N)
+        controls = tk.Frame(frame, bg=BG)
+        controls.pack(side=tk.TOP, fill=tk.X, padx=14, pady=(12, 8))
 
-        def place_inner(event: tk.Event | None = None) -> None:
-            cw = canvas.winfo_width()
-            ch = canvas.winfo_height()
-            if cw <= 1 or ch <= 1:
-                return
-            canvas.coords(inner_win, cw // 2, max(18, int(ch * 0.06)))
-            canvas.itemconfigure(inner_win, width=min(cw - 24, 780))
-
-        def on_play_configure(e: tk.Event) -> None:
-            if e.widget is not canvas:
-                return
-            draw_building_scene(canvas, e.width, e.height)
-            place_inner(e)
-
-        canvas.bind("<Configure>", on_play_configure)
-        self._play_canvas = canvas
-
-        top_row = tk.Frame(inner, bg=BG)
-        top_row.pack(fill=tk.X, pady=(0, 10))
+        top_row = tk.Frame(controls, bg=BG)
+        top_row.pack(fill=tk.X)
         self._styled_button(top_row, "Back to title", self.show_title_screen).pack(
             side=tk.LEFT, padx=(0, 12)
         )
 
         tk.Label(
-            inner,
-            text="Click a floor number (1–7) to play.",
+            controls,
+            text="Pick a floor (1–7) to enter the lab — stickman is on the element wall below.",
             font=self.sub_font,
             fg="#c8d0e0",
             bg=BG,
-        ).pack(pady=(0, 8))
+            wraplength=760,
+            justify=tk.CENTER,
+        ).pack(fill=tk.X, pady=(10, 6))
 
         self._rows_hint = tk.Label(
-            inner,
-            text="Each floor = that period's elements only. Row 1 is very easy; row 5 is hard; row 6 adds lava. Row 7 = ???",
+            controls,
+            text="Each floor uses only that period's elements. Row 1 = very easy · Row 5 = hard · Row 6 = lava",
             font=self.sub_font,
             fg="#8b90a0",
             bg=BG,
-            wraplength=720,
+            wraplength=760,
             justify=tk.CENTER,
         )
-        self._rows_hint.pack(pady=(0, 12))
+        self._rows_hint.pack(fill=tk.X, pady=(0, 10))
 
-        row_fr = tk.Frame(inner, bg=BG)
-        row_fr.pack(pady=(0, 8))
+        row_fr = tk.Frame(controls, bg=BG)
+        row_fr.pack(pady=(0, 6))
         for n in range(1, 8):
             tk.Button(
                 row_fr,
@@ -2208,12 +2244,22 @@ class PeriodicWallApp:
             ).pack(side=tk.LEFT, padx=5)
 
         tk.Label(
-            inner,
-            text="1=H–He  2=Li–Ne  3=Na–Ar  4=K–Kr  5=Rb–Xe  6=Cs–Rn  7=???",
+            controls,
+            text="1=H–He  2=Li–Ne  3=Na–Ar  4=K–Kr  5=Rb–Xe  6=Cs–Rn  7=meltdown",
             font=self.sub_font,
             fg="#6a7080",
             bg=BG,
-        ).pack(pady=(4, 0))
+        ).pack(pady=(0, 4))
+
+        self._play_canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg=BG)
+        self._play_canvas.pack(fill=tk.BOTH, expand=True)
+
+        def on_play_configure(e: tk.Event) -> None:
+            if e.widget is not self._play_canvas:
+                return
+            draw_wall_scene(self._play_canvas, e.width, e.height)
+
+        self._play_canvas.bind("<Configure>", on_play_configure)
 
         return frame
 
@@ -2269,40 +2315,9 @@ class PeriodicWallApp:
                 self._draw_survival_room()
 
         self._survival_canvas.bind("<Configure>", on_survival_configure)
-
-        def key_down(e: tk.Event) -> None:
-            if not self._survival_active:
-                return
-            k = e.keysym
-            if k in ("Left", "Right"):
-                self._survival_keys.add(k)
-            elif k in ("a", "A"):
-                self._survival_keys.add("a")
-            elif k in ("d", "D"):
-                self._survival_keys.add("d")
-            elif k in ("w", "W", "Up"):
-                self._jump_queued = True
-            elif k in ("s", "S"):
-                self._survival_keys.add("s")
-            elif k == "Down":
-                self._survival_keys.add("down")
-
-        def key_up(e: tk.Event) -> None:
-            k = e.keysym
-            if k in ("Left", "Right"):
-                self._survival_keys.discard(k)
-            elif k in ("a", "A"):
-                self._survival_keys.discard("a")
-            elif k in ("d", "D"):
-                self._survival_keys.discard("d")
-            elif k in ("s", "S"):
-                self._survival_keys.discard("s")
-            elif k == "Down":
-                self._survival_keys.discard("down")
-
-        self._survival_canvas.bind("<KeyPress>", key_down)
-        self._survival_canvas.bind("<KeyRelease>", key_up)
-        self._survival_canvas.bind("<Button-1>", lambda e: self._survival_canvas.focus_set())
+        self._survival_canvas.bind(
+            "<Button-1>", lambda _e: self._survival_canvas.focus_set()
+        )
 
         return frame
 
@@ -2332,6 +2347,7 @@ class PeriodicWallApp:
         self._stop_survival()
         self._stop_nuke()
         self._title_active = True
+        self._on_play_screen = False
         self._show_only(self.title_screen)
 
     def show_play_screen(self) -> None:
@@ -2339,8 +2355,10 @@ class PeriodicWallApp:
         self._stop_survival()
         self._stop_nuke()
         self._title_active = False
+        self._on_play_screen = True
         self._show_only(self.play_screen)
         self.root.update_idletasks()
+        self.root.focus_set()
 
     def run(self) -> None:
         self.root.mainloop()
