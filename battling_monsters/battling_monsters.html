@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battling Monsters</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #14181c; color: #e8eaf0; font-family: Arial, sans-serif; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #ui { position: fixed; inset: 0; pointer-events: none; }
+    #hud { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between; font-size: 14px; text-shadow: 0 1px 2px #000; }
+    #bar { position: absolute; top: 32px; left: 12px; width: 180px; height: 10px; background: #2a3038; border-radius: 4px; overflow: hidden; }
+    #bar > div { height: 100%; background: #7cff6b; width: 100%; }
+    #xp { position: absolute; top: 46px; left: 12px; width: 180px; height: 6px; background: #2a3038; border-radius: 3px; overflow: hidden; }
+    #xp > div { height: 100%; background: #4aa8ff; width: 0; }
+    .panel { pointer-events: auto; position: absolute; inset: 0; background: rgba(10,12,16,0.82); display: flex; align-items: center; justify-content: center; }
+    .card { background: #1a222c; border: 1px solid #4a5560; border-radius: 14px; padding: 18px; max-width: 920px; width: min(920px, 96vw); max-height: 92vh; overflow: auto; }
+    h1 { margin: 0 0 6px; color: #c4e06a; font-size: 28px; }
+    button { background: #2a3848; color: #e8eaf0; border: 1px solid #4a5560; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+    button:hover { background: #35485c; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 12px 0; }
+    .shop { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .pick { display: grid; gap: 8px; }
+    .pick button { text-align: left; padding: 12px; }
+    a { color: #4ecca3; }
+    #msg { position: absolute; top: 64px; left: 12px; color: #ffd24a; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <div id="hud"><span id="left">Stage 1</span><span id="right">Gold 0</span></div>
+    <div id="bar"><div id="hpfill"></div></div>
+    <div id="xp"><div id="xpfill"></div></div>
+    <div id="msg"></div>
+    <div id="lobby" class="panel">
+      <div class="card">
+        <p><a href="../index.html">← All games</a></p>
+        <h1>Battling Monsters</h1>
+        <p>WASD / arrows move. Weapons fire on their own. Collect gems, level up, smash 3 bosses to clear a stage.</p>
+        <div id="stages" class="grid"></div>
+        <h2 style="color:#ffd24a;font-size:16px">Gold shop</h2>
+        <div id="shop" class="shop"></div>
+      </div>
+    </div>
+    <div id="levelup" class="panel" style="display:none">
+      <div class="card">
+        <h1>Level up</h1>
+        <div id="picks" class="pick"></div>
+      </div>
+    </div>
+  </div>
+  <script src="battling_monsters.js"></script>
+</body>
+</html>
