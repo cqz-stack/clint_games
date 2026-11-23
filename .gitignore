@@ -209,3 +209,7 @@ __marimo__/
 
 # Mac Related
 .DS_Store
+
+# Local save / progress
+**/progress.json
+**/saves.json

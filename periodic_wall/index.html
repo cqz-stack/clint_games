@@ -9,17 +9,21 @@
         a { color: #4ecca3; }
         .box { max-width: 720px; margin: 0 auto; background: rgba(255,255,255,0.08); border-radius: 15px; padding: 28px; }
         h1 { color: #4ecca3; margin-top: 0; }
-        pre { background: #0d1117; padding: 16px; border-radius: 10px; }
+        pre { background: #0d1117; padding: 16px; border-radius: 10px; overflow-x: auto; }
     </style>
 </head>
 <body>
     <div class="box">
+        <p><a href="../index.html">← All games</a></p>
         <h1>The Periodic Wall of Elements</h1>
-        <p><strong>Version 0</strong> — one level, dodge falling H/He balls. Built from the ground up; see <code>DESIGN.md</code>.</p>
+        <p>Dodge elemental rain, fuse hazards, grab power-ups, and survive the floors. Full desktop survival game with sound effects.</p>
+        <p><strong>Desktop game (Python + Tkinter)</strong> — play on your computer, not in the browser.</p>
+        <h2>How to play</h2>
         <pre><code>cd periodic_wall
-python3 main.py
-pytest</code></pre>
-        <p><a href="reference/index.html">Legacy game</a> (fusion, 7 floors) · <a href="https://github.com/zikegcwk/clint_games/tree/main/periodic_wall">GitHub</a></p>
+python3 periodic.py</code></pre>
+        <p>Or open it from the <strong>What If?</strong> hub:</p>
+        <pre><code>python3 games_hub.py</code></pre>
+        <p><a href="reference/index.html">Legacy / reference build</a> · <a href="https://github.com/zikegcwk/clint_games/tree/main/periodic_wall">Source on GitHub</a></p>
     </div>
 </body>
 </html>
