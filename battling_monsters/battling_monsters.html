@@ -19,7 +19,9 @@
     button { background: #2a3848; color: #e8eaf0; border: 1px solid #4a5560; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
     button:hover { background: #35485c; }
     button:disabled { opacity: 0.4; cursor: default; }
-    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 12px 0; }
+    .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; margin: 12px 0; }
+    #hotbar { pointer-events: auto; position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: none; flex-wrap: wrap; justify-content: center; gap: 6px; width: min(640px, 96vw); }
+    #hotbar button { min-width: 0; padding: 6px 8px; font-size: 12px; }
     .shop { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .pick { display: grid; gap: 8px; }
     .pick button { text-align: left; padding: 12px; }
@@ -34,11 +36,12 @@
     <div id="bar"><div id="hpfill"></div></div>
     <div id="xp"><div id="xpfill"></div></div>
     <div id="msg"></div>
+    <div id="hotbar"></div>
     <div id="lobby" class="panel">
       <div class="card">
         <p><a href="../index.html">← All games</a></p>
         <h1>Battling Monsters</h1>
-        <p>WASD / arrows move. Weapons fire on their own. Collect gems, level up, smash 3 bosses to clear a stage.</p>
+        <p>WASD move. The wand fires on its own and breaks crates for gold. Press 1–6, then click the ground to aim. 50 stages, three bosses each (one giant every 10), minibosses, and upgrades that keep coming.</p>
         <div id="stages" class="grid"></div>
         <h2 style="color:#ffd24a;font-size:16px">Gold shop</h2>
         <div id="shop" class="shop"></div>

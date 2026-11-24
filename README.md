@@ -34,7 +34,7 @@ Hard long auto-runner — [`geometry_dash/`](geometry_dash/). Spikes, pads, orbs
 
 ## Battling Monsters
 
-Survivor.io-style infinite sandbox — gems, level-ups, 10 stages × 3 bosses — [`battling_monsters/`](battling_monsters/). Also in the What If? hub.
+Survivor sandbox — gems, level-ups, 50 stages, click-to-aim skills, giant bosses every 10 stages — [`battling_monsters/`](battling_monsters/). Also in the What If? hub.
 
 ## Raising a Colony
 
